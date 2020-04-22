@@ -2,8 +2,12 @@
 pub mod btleplug;
 #[cfg(all(feature = "xinput", target_os = "windows"))]
 pub mod xinput;
-use crate::{core::errors::ButtplugError, device::device::ButtplugDeviceImplCreator};
+#[cfg(feature = "serial-manager")]
+pub mod serialport;
+
+use async_trait::async_trait;
 use async_std::sync::Sender;
+use crate::{core::errors::ButtplugError, device::device::ButtplugDeviceImplCreator};
 
 pub enum DeviceCommunicationEvent {
   // This event only means that a device has been found. The work still needs
