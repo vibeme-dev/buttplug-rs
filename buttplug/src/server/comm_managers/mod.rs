@@ -4,6 +4,8 @@ pub mod btleplug;
 pub mod serialport;
 #[cfg(all(feature = "xinput", target_os = "windows"))]
 pub mod xinput;
+#[cfg(feature = "serial-manager")]
+pub mod lovense_dongle;
 
 use crate::{core::errors::ButtplugError, device::device::ButtplugDeviceImplCreator};
 use async_std::sync::Sender;
