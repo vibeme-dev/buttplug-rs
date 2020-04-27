@@ -62,7 +62,8 @@ create_protocols!(
   ("youou", youou, Youou),
   ("lovehoney-desire", lovehoney_desire, LovehoneyDesire),
   ("vorze-sa", vorze_sa, VorzeSA),
-  ("xinput", xinput, XInput)
+  ("xinput", xinput, XInput),
+  ("erostek-et312", erostek_et312, ErostekET312),
 );
 
 #[async_trait]
