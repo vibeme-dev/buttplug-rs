@@ -64,6 +64,7 @@ create_protocols!(
   ("vorze-sa", vorze_sa, VorzeSA),
   ("xinput", xinput, XInput),
   ("erostek-et312", erostek_et312, ErostekET312),
+  ("tcode", tcode, TCode)
 );
 
 #[async_trait]
