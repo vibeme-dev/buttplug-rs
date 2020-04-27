@@ -9,13 +9,17 @@
 // servers can access certain types of devices, and how clients can ask
 // servers which devices are available.
 #[allow(unused_imports)]
-use async_std::task;
+use async_std::{io, task};
 use buttplug::{
   client::{connectors::ButtplugEmbeddedClientConnector, ButtplugClient, ButtplugClientEvent},
+  server::comm_managers::serialport::SerialPortCommunicationManager,
   test::TestDevice,
 };
+use env_logger;
 
 async fn device_enumeration_example() {
+
+  env_logger::init();
   // Time to see what devices are available! In this example, we'll see how
   // servers can access certain types of devices, and how clients can ask
   // servers which devices are available.
@@ -57,6 +61,9 @@ async fn device_enumeration_example() {
   let (_, test_device_impl_creator) =
     TestDevice::new_bluetoothle_test_device_impl_creator("Massage Demo");
   let devices = connector.server_ref().add_test_comm_manager();
+  connector
+    .server_ref()
+    .add_comm_manager::<SerialPortCommunicationManager>();
   devices
     .lock()
     .await
@@ -124,58 +131,62 @@ async fn device_enumeration_example() {
       //
       // For our purposes for the moment, all we care about is receiving
       // new devices, so we'll just loop and wait.
-      loop {
-        match client.wait_for_event().await {
-          // Yay we got an event!
-          Ok(event) => match event {
-            ButtplugClientEvent::DeviceAdded(device) => {
-              // And we actually got a device!
-              //
-              // The device we're given is a real
-              // ButtplugClientDevice object. We could control the
-              // device with it if we wanted, but that's coming up
-              // in a later example. For now, we'll just print the
-              // device name then drop our instance of it.
-              println!("We got a device: {}", device.name);
+      task::spawn(async move {
+        loop {
+          match client.wait_for_event().await {
+            // Yay we got an event!
+            Ok(event) => match event {
+              ButtplugClientEvent::DeviceAdded(device) => {
+                // And we actually got a device!
+                //
+                // The device we're given is a real
+                // ButtplugClientDevice object. We could control the
+                // device with it if we wanted, but that's coming up
+                // in a later example. For now, we'll just print the
+                // device name then drop our instance of it.
+                println!("We got a device: {}", device.name);
+              }
+              ButtplugClientEvent::ServerDisconnect => {
+                // The server disconnected, which means we're done
+                // here, so just break up to the top level.
+                println!("Server disconnected!");
+              }
+              _ => {
+                // Something else happened, like scanning finishing,
+                // devices getting removed, etc... Might as well say
+                // something about it.
+                println!("Got some other kind of event we don't care about");
+              }
+            },
+            // Once again, if we disconnected before calling
+            // wait_for_error, we'll get an error back.
+            Err(err) => {
+              println!("Error while waiting for client events: {}", err);
             }
-            ButtplugClientEvent::ServerDisconnect => {
-              // The server disconnected, which means we're done
-              // here, so just break up to the top level.
-              println!("Server disconnected!");
-            }
-            _ => {
-              // Something else happened, like scanning finishing,
-              // devices getting removed, etc... Might as well say
-              // something about it.
-              println!("Got some other kind of event we don't care about");
-            }
-          },
-          // Once again, if we disconnected before calling
-          // wait_for_error, we'll get an error back.
-          Err(err) => {
-            println!("Error while waiting for client events: {}", err);
           }
-        }
 
-        // Hypothetical situation: We've now exited our match block, and
-        // realized that hey, we actually wanted that device object we
-        // dropped in the DeviceAdded branch!
-        //
-        // Never fear, you can always ask for a vec of all devices from
-        // the client. It requires an await as the devices require
-        // creation by the event loop, but it should be pretty quick.
-        //
-        // As with everything else, since the event loop may have shut
-        // down due to server disconnect, this returns a result that
-        // will error if that has happened.
-        if let Ok(devices) = client.devices().await {
-          println!("Devices currently connected:");
-          for dev in devices {
-            println!("- {}", dev.name);
+          // Hypothetical situation: We've now exited our match block, and
+          // realized that hey, we actually wanted that device object we
+          // dropped in the DeviceAdded branch!
+          //
+          // Never fear, you can always ask for a vec of all devices from
+          // the client. It requires an await as the devices require
+          // creation by the event loop, but it should be pretty quick.
+          //
+          // As with everything else, since the event loop may have shut
+          // down due to server disconnect, this returns a result that
+          // will error if that has happened.
+          if let Ok(devices) = client.devices().await {
+            println!("Devices currently connected:");
+            for dev in devices {
+              println!("- {}", dev.name);
+            }
           }
-          break;
         }
-      }
+      });
+      println!("Hit enter to exit.");
+      let mut buf = String::default();
+      io::stdin().read_line(&mut buf).await.unwrap();
       // And now we're done!
       println!("Exiting example");
     }
