@@ -1,3 +1,7 @@
+use super::lovense_dongle_messages::{
+  LovenseDongleIncomingMessage, LovenseDongleMessageFunc, LovenseDongleMessageType,
+  LovenseDongleOutgoingMessage,
+};
 use super::LovenseDongleDeviceImplCreator;
 use crate::{
   core::errors::ButtplugError,
@@ -15,7 +19,6 @@ use serialport::{
   available_ports, open_with_settings, SerialPort, SerialPortSettings, SerialPortType,
 };
 use std::{io::ErrorKind, thread, time::Duration};
-use super::lovense_dongle_messages::{LovenseDongleOutgoingMessage, LovenseDongleIncomingMessage, LovenseDongleMessageFunc, LovenseDongleMessageType};
 
 enum OutgoingLovenseData {
   Raw(String),
@@ -37,14 +40,12 @@ fn serial_write_thread(mut port: Box<dyn SerialPort>, mut receiver: Receiver<Out
   task::block_on(async move {
     loop {
       match receiver.next().await {
-        Some(v) => {
-          match v {
-            OutgoingLovenseData::Raw(s) => {
-              port_write(s);
-            }
-            OutgoingLovenseData::Message(m) => {
-              port_write(serde_json::to_string(&m).unwrap());
-            }
+        Some(v) => match v {
+          OutgoingLovenseData::Raw(s) => {
+            port_write(s);
+          }
+          OutgoingLovenseData::Message(m) => {
+            port_write(serde_json::to_string(&m).unwrap());
           }
         },
         None => break,
@@ -55,19 +56,42 @@ fn serial_write_thread(mut port: Box<dyn SerialPort>, mut receiver: Receiver<Out
 }
 
 fn serial_read_thread(mut port: Box<dyn SerialPort>, sender: Sender<IncomingLovenseData>) {
+  let mut data: String = String::default();
   loop {
     // TODO This is probably too small
     let mut buf: [u8; 1024] = [0; 1024];
     match port.read(&mut buf) {
       Ok(len) => {
         info!("Got {} serial bytes", len);
-        info!("{:?}", buf[0..len].to_vec());
-        info!("{}", std::str::from_utf8(&buf).unwrap());
-        /*
-        task::block_on(async {
-          sender.send(buf[0..len].to_vec()).await;
-        });
-        */
+        data += std::str::from_utf8(&buf[0..len]).unwrap();
+        if data.contains("\n") {
+          // We have what should be a full message.
+          // Split it.
+          let msg_vec: Vec<&str> = data.split("\n").collect();
+
+          let incoming = msg_vec[0];
+          task::block_on(async {
+            match serde_json::from_str::<LovenseDongleIncomingMessage>(incoming) {
+              Ok(m) => {
+                info!("{:?}", m);
+                sender.send(IncomingLovenseData::Message(m)).await;
+              }
+              Err(e) => {
+                error!("{:?}", e);
+                sender
+                  .send(IncomingLovenseData::Raw(incoming.to_string()))
+                  .await;
+              }
+            }
+          });
+
+          // Save off the extra.
+          if msg_vec.len() > 1 {
+            data = msg_vec[1].to_string();
+          } else {
+            data = String::default();
+          }
+        }
       }
       Err(e) => {
         if e.kind() == ErrorKind::TimedOut {
@@ -165,7 +189,10 @@ impl DeviceCommunicationManager for LovenseDongleCommunicationManager {
                     command: None,
                   };
                   //self.port_sender.send(OutgoingLovenseData::Raw("DeviceType;".to_string())).await;
-                  self.port_sender.send(OutgoingLovenseData::Message(scan_msg)).await;
+                  self
+                    .port_sender
+                    .send(OutgoingLovenseData::Message(scan_msg))
+                    .await;
                 }
                 Err(e) => error!("{:?}", e),
               };

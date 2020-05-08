@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
+use serde_repr::*;
 
 #[repr(u16)]
-#[derive(Serialize, Deserialize, Clone, Copy)]
+#[derive(Serialize_repr, Deserialize_repr, Clone, Copy, Debug)]
 pub enum LovenseDongleResultCode {
   CommandSuccess = 200,
   DeviceConnectFailed = 201,
@@ -12,7 +13,7 @@ pub enum LovenseDongleResultCode {
   DongleScanningInterruption = 501,
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
 pub enum LovenseDongleMessageType {
   #[serde(rename = "usb")]
   USB,
@@ -20,7 +21,7 @@ pub enum LovenseDongleMessageType {
   Toy,
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
 pub enum LovenseDongleMessageFunc {
   #[serde(rename = "search")]
   Search,
@@ -36,7 +37,7 @@ pub enum LovenseDongleMessageFunc {
   Connect,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct LovenseDongleOutgoingMessage {
   #[serde(rename = "type")]
   pub message_type: LovenseDongleMessageType,
@@ -49,7 +50,7 @@ pub struct LovenseDongleOutgoingMessage {
   pub eager: Option<u32>,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct LovenseDongleIncomingData {
   #[serde(skip_serializing_if="Option::is_none")]
   pub id: Option<String>,
@@ -59,7 +60,7 @@ pub struct LovenseDongleIncomingData {
   pub status: Option<LovenseDongleResultCode>,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct LovenseDongleIncomingMessage {
   #[serde(rename = "type")]
   pub message_type: LovenseDongleMessageType,
