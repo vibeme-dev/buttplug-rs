@@ -12,7 +12,11 @@
 use async_std::{io, task};
 use buttplug::{
   client::{connectors::ButtplugEmbeddedClientConnector, ButtplugClient, ButtplugClientEvent},
-  server::comm_managers::serialport::SerialPortCommunicationManager,
+  server::comm_managers::{
+    serialport::SerialPortCommunicationManager,
+    lovense_dongle::LovenseDongleCommunicationManager,
+  },
+
   test::TestDevice,
 };
 use env_logger;
@@ -58,16 +62,19 @@ async fn device_enumeration_example() {
   // manager, this gets a little complicated. We'll just be emulating a
   // bluetooth device, the Aneros Vivi, by using its bluetooth name.
 
-  let (_, test_device_impl_creator) =
-    TestDevice::new_bluetoothle_test_device_impl_creator("Massage Demo");
-  let devices = connector.server_ref().add_test_comm_manager();
+  //let (_, test_device_impl_creator) =
+  //  TestDevice::new_bluetoothle_test_device_impl_creator("Massage Demo");
+  //let devices = connector.server_ref().add_test_comm_manager();
+/*  connector
+    .server_ref()
+    .add_comm_manager::<SerialPortCommunicationManager>(); */
   connector
     .server_ref()
-    .add_comm_manager::<SerialPortCommunicationManager>();
-  devices
+    .add_comm_manager::<LovenseDongleCommunicationManager>();
+  /*devices
     .lock()
     .await
-    .push(Box::new(test_device_impl_creator));
+    .push(Box::new(test_device_impl_creator)); */
 
   // If we wanted to add a real device manager, like the btleplug manager,
   // we'd run something like this:
