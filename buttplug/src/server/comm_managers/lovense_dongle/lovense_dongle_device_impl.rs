@@ -1,7 +1,7 @@
 use crate::{
   core::{errors::ButtplugError, messages::RawReading},
   device::{
-    configuration_manager::{DeviceSpecifier, ProtocolDefinition, SerialSpecifier},
+    configuration_manager::{DeviceSpecifier, ProtocolDefinition, BluetoothLESpecifier},
     device::{
       BoundedDeviceEventBroadcaster,
       ButtplugDeviceEvent,
@@ -15,6 +15,10 @@ use crate::{
     Endpoint,
   },
 };
+use super::{
+  lovense_dongle_messages::{LovenseDongleIncomingMessage, LovenseDongleOutgoingMessage, LovenseDongleMessageFunc, LovenseDongleMessageType},
+  lovense_dongle_comm_manager::OutgoingLovenseData
+};
 use async_std::{
   prelude::StreamExt,
   sync::{channel, Arc, Mutex, Receiver, Sender},
@@ -22,20 +26,54 @@ use async_std::{
 };
 use async_trait::async_trait;
 use broadcaster::BroadcastChannel;
-use serialport::{open_with_settings, SerialPort, SerialPortInfo, SerialPortSettings};
-use std::{io::ErrorKind, thread, time::Duration};
 
 pub struct LovenseDongleDeviceImplCreator {
   specifier: DeviceSpecifier,
-  port_info: SerialPortInfo,
+  id: String,
+  port_sender: Sender<OutgoingLovenseData>,
 }
 
 impl LovenseDongleDeviceImplCreator {
-  pub fn new(port_info: &SerialPortInfo) -> Self {
+  pub fn new(id: &str, port_sender: Sender<OutgoingLovenseData>) -> Self {
     Self {
-      specifier: DeviceSpecifier::Serial(SerialSpecifier::new_from_name(&port_info.port_name)),
-      port_info: port_info.clone(),
+      // We know the only thing we'll ever get from a lovense dongle is a
+      // lovense device. However, we don't have a way to specify that in our
+      // device config file. Therefore, we just lie and act like it's a
+      // bluetooth device with a name that will match the Lovense builder. Then
+      // when we get the device, we can set up as we need.
+      //
+      // Hacky, but it works.
+      specifier: DeviceSpecifier::BluetoothLE(BluetoothLESpecifier::new_from_device("LVS-SerialPortDevice")),
+      id: id.to_string(),
+      port_sender
     }
+  }
+}
+
+#[async_trait]
+impl ButtplugDeviceImplCreator for LovenseDongleDeviceImplCreator {
+  fn get_specifier(&self) -> DeviceSpecifier {
+    self.specifier.clone()
+  }
+
+  async fn try_create_device_impl(
+    &mut self,
+    protocol: ProtocolDefinition,
+  ) -> Result<Box<dyn DeviceImpl>, ButtplugError> {
+    info!("RUNNING DEVICE IMPL CREATION");
+    let outgoing_msg = LovenseDongleOutgoingMessage {
+      func: LovenseDongleMessageFunc::Connect,
+      message_type: LovenseDongleMessageType:: Toy,
+      id: Some(self.id.clone()),
+      command: None,
+      eager: None
+    };
+    task::block_on(async {
+      self.port_sender.send(OutgoingLovenseData::Message(outgoing_msg)).await;
+      task::sleep(std::time::Duration::from_millis(1000)).await;
+    });
+
+    Ok(Box::new(LovenseDongleDeviceImpl::new(&self.id, self.port_sender.clone())))
   }
 }
 
@@ -43,26 +81,25 @@ impl LovenseDongleDeviceImplCreator {
 pub struct LovenseDongleDeviceImpl {
   name: String,
   address: String,
-  port_receiver: Receiver<Vec<u8>>,
-  port_sender: Sender<Vec<u8>>,
+  port_receiver: Receiver<LovenseDongleIncomingMessage>,
+  port_sender: Sender<OutgoingLovenseData>,
   connected: bool,
   event_receiver: BoundedDeviceEventBroadcaster,
 }
 
 impl LovenseDongleDeviceImpl {
   pub fn new(
-    protocol_def: ProtocolDefinition,
-    port_receiver: Receiver<Vec<u8>>,
-    port_sender: Sender<Vec<u8>>,
-    event_receiver: BoundedDeviceEventBroadcaster,
+    address: &String,
+    port_sender: Sender<OutgoingLovenseData>,
   ) -> Self {
+    let (_, port_receiver) = channel(256);
     Self {
       name: "Lovense Serial Device".to_owned(),
-      address: "whatever".to_owned(),
+      address: address.to_string(),
       port_receiver,
       port_sender,
       connected: true,
-      event_receiver,
+      event_receiver: BroadcastChannel::with_cap(256),
     }
   }
 }
@@ -98,45 +135,23 @@ impl DeviceImpl for LovenseDongleDeviceImpl {
   }
 
   async fn read_value(&self, _msg: DeviceReadCmd) -> Result<RawReading, ButtplugError> {
-    // TODO Should check endpoint validity and length requirements
-    if self.port_receiver.is_empty() {
-      Ok(RawReading::new(0, Endpoint::Rx, vec![]))
-    } else {
-      let mut port_receiver = self.port_receiver.clone();
-      Ok(RawReading::new(
-        0,
-        Endpoint::Rx,
-        port_receiver.next().await.unwrap(),
-      ))
-    }
+    unimplemented!()
   }
 
   async fn write_value(&self, msg: DeviceWriteCmd) -> Result<(), ButtplugError> {
-    // TODO Should check endpoint validity
-    Ok(self.port_sender.send(msg.data).await)
+    info!("Writing to lovense device: {}", std::str::from_utf8(&msg.data).unwrap().to_string());
+    let outgoing_msg = LovenseDongleOutgoingMessage {
+      func: LovenseDongleMessageFunc::Command,
+      message_type: LovenseDongleMessageType:: Toy,
+      id: Some(self.address.clone()),
+      command: Some(std::str::from_utf8(&msg.data).unwrap().to_string()),
+      eager: None
+    };
+    self.port_sender.send(OutgoingLovenseData::Message(outgoing_msg)).await;
+    Ok(())
   }
 
   async fn subscribe(&self, _msg: DeviceSubscribeCmd) -> Result<(), ButtplugError> {
-    // TODO Should check endpoint validity
-    let mut data_receiver = self.port_receiver.clone();
-    let event_sender = self.event_receiver.clone();
-    task::spawn(async move {
-      loop {
-        match data_receiver.next().await {
-          Some(data) => {
-            info!("Got serial data! {:?}", data);
-            event_sender
-              .send(&ButtplugDeviceEvent::Notification(Endpoint::Tx, data))
-              .await
-              .unwrap();
-          }
-          None => {
-            info!("Data channel closed, ending serial listener task");
-            break;
-          }
-        }
-      }
-    });
     Ok(())
   }
 

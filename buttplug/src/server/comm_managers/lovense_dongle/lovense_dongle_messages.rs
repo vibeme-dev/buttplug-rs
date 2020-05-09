@@ -9,7 +9,10 @@ pub enum LovenseDongleResultCode {
   DeviceConnectSuccess = 202,
   SearchStarted = 205,
   SearchStopped = 206,
+  MalformedMessage = 400,
+  DeviceConnectionInProgress = 402,
   DeviceDisconnected = 403,
+  DeviceNotFound = 404,
   DongleScanningInterruption = 501,
 }
 
@@ -35,6 +38,8 @@ pub enum LovenseDongleMessageFunc {
   ToyData,
   #[serde(rename = "connect")]
   Connect,
+  #[serde(rename = "error")]
+  Error,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
