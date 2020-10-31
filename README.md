@@ -40,7 +40,7 @@ including implementations of the client and, at some point, server.
 This repo is a monorepo with 2 projects:
 
 - [buttplug](buttplug/) - Main library
-- [buttplug_device](buttplug_derive/) - Procedural macros used by the buttplug rust library.
+- [buttplug_derive](buttplug_derive/) - Procedural macros used by the buttplug rust library.
 
 For information about compiling and using these libraries, please check the
 README files in their directories.
